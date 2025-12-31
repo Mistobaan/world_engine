@@ -28,7 +28,6 @@ class WorldEngine:
         self,
         model_uri: str,
         quant: Optional[str] = None,
-        apply_patches: bool = True,
         model_config_overrides: Optional[Dict] = None,
         device=None,
         dtype=torch.bfloat16,
@@ -47,9 +46,10 @@ class WorldEngine:
         # Model
         self.vae = InferenceAE.from_pretrained(model_uri, device=device, dtype=dtype)
         # self.prompt_encoder = PromptEncoder("google/umt5-xl").to(device).eval()  # TODO: dont hardcode
+
         self.model = WorldModel.from_pretrained(model_uri, cfg=self.model_cfg).to(device=device, dtype=dtype).eval()
-        if apply_patches:
-            apply_inference_patches(self.model)
+        apply_inference_patches(self.model)
+
         if quant is not None:
             quantize_model(self.model, quant)
 

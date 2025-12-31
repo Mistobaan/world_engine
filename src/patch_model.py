@@ -1,8 +1,10 @@
 import torch
 from torch import nn, Tensor
+import torch.nn.functional as F
 
 from .model.nn import rms_norm
 from .model.attn import Attn
+from .model.world_model import MLPFusion
 from torch.nn.attention.flex_attention import flex_attention
 
 
@@ -145,6 +147,39 @@ def patch_Attn_merge_qkv(model) -> None:
             model.set_submodule(name, MergedQKVAttn(mod, model.config))
 
 
+class SplitMLPFusion(nn.Module):
+    """Packed MLPFusion -> split linears (no cat, quant-friendly)."""
+    def __init__(self, src: MLPFusion):
+        super().__init__()
+        D = src.mlp.fc2.in_features
+        dev, dt = src.mlp.fc2.weight.device, src.mlp.fc2.weight.dtype
+
+        self.fc1_x = nn.Linear(D, D, bias=False, device=dev, dtype=dt)
+        self.fc1_c = nn.Linear(D, D, bias=False, device=dev, dtype=dt)
+        self.fc2 = nn.Linear(D, D, bias=False, device=dev, dtype=dt)
+
+        with torch.no_grad():
+            Wx, Wc = src.mlp.fc1.weight.chunk(2, dim=1)
+            self.fc1_x.weight.copy_(Wx)
+            self.fc1_c.weight.copy_(Wc)
+            self.fc2.weight.copy_(src.mlp.fc2.weight)
+
+        self.train(src.training)
+
+    def forward(self, x: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
+        B, _, D = x.shape
+        L = cond.shape[1]
+        x = x.reshape(B, L, -1, D)
+        return self.fc2(F.silu(self.fc1_x(x) + self.fc1_c(cond).unsqueeze(2))).flatten(1, 2)
+
+
+def patch_MLPFusion_split(model) -> None:
+    for name, mod in list(model.named_modules()):
+        if isinstance(mod, MLPFusion) and not isinstance(mod, SplitMLPFusion):
+            model.set_submodule(name, SplitMLPFusion(mod))
+
+
 def apply_inference_patches(model) -> None:
     patch_cached_noise_conditioning(model)
     patch_Attn_merge_qkv(model)
+    patch_MLPFusion_split(model)
