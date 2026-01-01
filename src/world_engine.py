@@ -44,7 +44,7 @@ class WorldEngine:
             self.model_cfg.merge_with(model_config_overrides)
 
         # Model
-        self.vae = InferenceAE.from_pretrained(model_uri, device=device, dtype=dtype)
+        self.vae = InferenceAE.from_pretrained(self.model_cfg.ae_uri, device=device, dtype=dtype)
         # self.prompt_encoder = PromptEncoder("google/umt5-xl").to(device).eval()  # TODO: dont hardcode
 
         self.model = WorldModel.from_pretrained(model_uri, cfg=self.model_cfg).to(device=device, dtype=dtype).eval()
