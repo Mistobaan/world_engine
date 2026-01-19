@@ -126,7 +126,7 @@ class WorldEngine:
     def prep_inputs(self, x, ctrl=None):
         ctrl = ctrl if ctrl is not None else CtrlInput()
         ctrl.mouse = torch.tensor(ctrl.mouse)
-        ctrl.scroll_wheel = torch.tensor(ctrl.scroll_wheel)
+        ctrl.scroll_wheel = torch.sign(torch.tensor(ctrl.scroll_wheel))
         ctx = self._prep_inputs(x, ctrl)
 
         # prepare prompt conditioning
